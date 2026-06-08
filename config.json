@@ -1,0 +1,14 @@
+{
+  "client_id": "b3cb33bfad0140748962e0ec98dd85bc",
+  "client_secret": "bb94787df5a84e30b60264a87497d8fa",
+  "playlist_id": "https://open.spotify.com/playlist/6Jq2DDdkPMMZhE7hlERQP7?si=194770622f504ab9",
+
+  "output_dir": "output",
+
+  "youtube_search": true,
+  "youtube_delay_seconds": 1.0,
+
+  "output_formats": ["txt", "csv", "json"],
+
+  "name_format": "{title} - {artist}"
+}

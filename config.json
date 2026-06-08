@@ -1,7 +1,7 @@
 {
-  "client_id": "b3cb33bfad0140748962e0ec98dd85bc",
-  "client_secret": "bb94787df5a84e30b60264a87497d8fa",
-  "playlist_id": "https://open.spotify.com/playlist/6Jq2DDdkPMMZhE7hlERQP7?si=194770622f504ab9",
+  "client_id": "IDHERE",
+  "client_secret": "SECRETHERE",
+  "playlist_id": "PLAYLISTLINKHERE",
 
   "output_dir": "output",
 

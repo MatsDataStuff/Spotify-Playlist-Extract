@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/28692890/README.md)
 # Spotify-Playlist-Extract
 For those with large playlist, who want a list of their collection for any reason. 
 # Spotify Playlist Extractor

@@ -3,7 +3,7 @@
 For those with large playlist, who want a list of their collection for any reason. 
 # Spotify Playlist Extractor
 
-Extract every track from any Spotify playlist into clean, usable lists — song names, Spotify links, YouTube links, CSV, and JSON. No third-party dependencies, pure Python 3.
+Extract every track from any Spotify playlist into clean, usable lists song names, Spotify links, YouTube links, CSV, and JSON. No third-party dependencies, pure Python 3.
 
 ---
 
@@ -17,7 +17,7 @@ Extract every track from any Spotify playlist into clean, usable lists — song 
 - Fully configurable via `config.json` or CLI flags
 - Zero dependencies — pure Python 3 stdlib only
 
->  **YouTube note:** Links are found by scraping YouTube search results without an API key. Results are a best-effort match — covers, live versions, or wrong songs may appear. Accuracy is typically ~85–90% for well-known tracks.
+>  **YouTube note:** Links are found by scraping YouTube search results without an API key. Results are a best-effort match covers, live versions, or wrong songs may appear. Accuracy is typically ~85–90% for well-known tracks.
 
 ---
 

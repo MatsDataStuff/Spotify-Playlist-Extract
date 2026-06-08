@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Spotify Playlist Extractor
---------------------------
-Extracts all tracks from a Spotify playlist and optionally finds YouTube links.
+spotify playlist extractor
+grabs all tracks from a playlist, optionally finds youtube links too
 
-Usage:
+usage:
     python extractor.py
-    python extractor.py --playlist <playlist_id_or_url>
+    python extractor.py --playlist <id or url>
     python extractor.py --no-youtube
     python extractor.py --format csv
 """
@@ -20,12 +19,9 @@ import re
 import base64
 import urllib.request
 import urllib.parse
-import urllib.error
 from datetime import datetime
 
-# ──────────────────────────────────────────────
-# CONFIG — edit these or use a config.json file
-# ──────────────────────────────────────────────
+
 DEFAULT_CONFIG = {
     "client_id": "",
     "client_secret": "",
@@ -40,89 +36,92 @@ DEFAULT_CONFIG = {
 CONFIG_FILE = "config.json"
 
 
-# ──────────────────────────────────────────────
-# HELPERS
-# ──────────────────────────────────────────────
-
 def load_config():
     cfg = DEFAULT_CONFIG.copy()
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            file_cfg = json.load(f)
-        cfg.update(file_cfg)
+        with open(CONFIG_FILE) as f:
+            cfg.update(json.load(f))
     return cfg
 
 
 def save_default_config():
     with open(CONFIG_FILE, "w") as f:
         json.dump(DEFAULT_CONFIG, f, indent=2)
-    print(f"  Created {CONFIG_FILE} — fill in your credentials and run again.")
+    print(f"created {CONFIG_FILE} — fill in your credentials and run again")
 
 
-def extract_playlist_id(value: str) -> str:
-    """Accept full URL or bare ID."""
-    match = re.search(r"playlist/([A-Za-z0-9]+)", value)
-    return match.group(1) if match else value.strip()
+def extract_playlist_id(value):
+    m = re.search(r"playlist/([A-Za-z0-9]+)", value)
+    return m.group(1) if m else value.strip()
 
 
-def http_get(url: str, headers: dict = None) -> dict:
+def http_get(url, headers=None):
     req = urllib.request.Request(url, headers=headers or {})
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read().decode())
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read().decode())
 
 
-def http_post_form(url: str, data: dict, headers: dict = None) -> dict:
-    encoded = urllib.parse.urlencode(data).encode()
-    req = urllib.request.Request(url, data=encoded, headers=headers or {}, method="POST")
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read().decode())
+def http_post_form(url, data, headers=None):
+    req = urllib.request.Request(
+        url,
+        data=urllib.parse.urlencode(data).encode(),
+        headers=headers or {},
+        method="POST"
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read().decode())
 
 
-# ──────────────────────────────────────────────
-# SPOTIFY
-# ──────────────────────────────────────────────
+# --- spotify ---
 
-def get_spotify_token(client_id: str, client_secret: str) -> str:
-    credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
-    data = http_post_form(
+def get_token(client_id, client_secret):
+    creds = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    resp = http_post_form(
         "https://accounts.spotify.com/api/token",
         {"grant_type": "client_credentials"},
-        {"Authorization": f"Basic {credentials}", "Content-Type": "application/x-www-form-urlencoded"},
+        {
+            "Authorization": f"Basic {creds}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
     )
-    return data["access_token"]
+    return resp["access_token"]
 
 
-def fetch_playlist_tracks(token: str, playlist_id: str):
+def fetch_tracks(token, playlist_id):
     tracks = []
     url = (
         f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
         f"?limit=100&fields=next,total,items(track(name,id,external_urls,artists))"
     )
-    headers = {"Authorization": f"Bearer {token}"}
+    auth = {"Authorization": f"Bearer {token}"}
     total = None
 
     while url:
-        data = http_get(url, headers)
+        data = http_get(url, auth)
+
         if total is None:
             total = data.get("total", "?")
-            print(f"  Total tracks: {total}")
+            print(f"  found {total} tracks")
 
         for item in data.get("items", []):
-            track = item.get("track")
-            if not track or not track.get("name"):
+            t = item.get("track")
+            if not t or not t.get("name"):
                 continue
-            artists = ", ".join(a["name"] for a in track.get("artists", []))
-            spotify_url = track.get("external_urls", {}).get("spotify", f"https://open.spotify.com/track/{track['id']}")
+            artists = ", ".join(a["name"] for a in t.get("artists", []))
+            sp_url = t.get("external_urls", {}).get(
+                "spotify", f"https://open.spotify.com/track/{t['id']}"
+            )
             tracks.append({
-                "title": track["name"],
+                "title": t["name"],
                 "artist": artists,
-                "spotify_url": spotify_url,
-                "track_id": track["id"],
+                "spotify_url": sp_url,
+                "track_id": t["id"],
             })
 
-        fetched = len(tracks)
-        pct = int(fetched / total * 100) if isinstance(total, int) else "?"
-        print(f"  Fetched {fetched}/{total} ({pct}%)", end="\r")
+        n = len(tracks)
+        pct = int(n / total * 100) if isinstance(total, int) else "?"
+        print(f"  {n}/{total} ({pct}%)", end="\r")
+
         url = data.get("next")
         if url:
             time.sleep(0.05)
@@ -131,18 +130,14 @@ def fetch_playlist_tracks(token: str, playlist_id: str):
     return tracks
 
 
-# ──────────────────────────────────────────────
-# YOUTUBE (scrape-based, no API key needed)
-# ──────────────────────────────────────────────
+# --- youtube ---
 
-def search_youtube(query: str) -> str | None:
+def yt_search(query):
     """
-    Search YouTube without an API key by scraping the search results page.
-    NOTE: This is a best-effort match — accuracy varies. Results may not be
-    the exact version (could be a cover, live version, or wrong song).
+    scrapes youtube search results to find a video id — no api key needed.
+    not perfect, might grab a cover or live version sometimes.
     """
-    encoded = urllib.parse.quote_plus(query)
-    url = f"https://www.youtube.com/results?search_query={encoded}"
+    url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}"
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -152,130 +147,127 @@ def search_youtube(query: str) -> str | None:
     }
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
-        # extract first video ID from ytInitialData
-        match = re.search(r'"videoId":"([a-zA-Z0-9_-]{11})"', html)
-        if match:
-            return f"https://www.youtube.com/watch?v={match.group(1)}"
+        with urllib.request.urlopen(req, timeout=10) as r:
+            html = r.read().decode("utf-8", errors="ignore")
+        m = re.search(r'"videoId":"([a-zA-Z0-9_-]{11})"', html)
+        if m:
+            return f"https://www.youtube.com/watch?v={m.group(1)}"
     except Exception:
         pass
     return None
 
 
-def resolve_youtube_links(tracks: list, delay: float = 1.0):
-    print(f"\n  ⚠  YouTube matching is best-effort — results may not be exact.")
-    print(f"     Covers, live versions, or wrong songs can appear.\n")
+def resolve_youtube(tracks, delay=1.0):
+    print("\n  heads up: youtube matching isn't perfect")
+    print("  covers/live versions can slip through\n")
+
     total = len(tracks)
     for i, track in enumerate(tracks):
         query = f"{track['title']} {track['artist']} official audio"
-        yt = search_youtube(query)
+        yt = yt_search(query)
         track["youtube_url"] = yt or ""
         pct = int((i + 1) / total * 100)
-        status = "✓" if yt else "✗"
-        print(f"  [{pct:3d}%] {status} {track['title'][:50]}", end="\r")
+        mark = "+" if yt else "-"
+        print(f"  [{pct:3d}%] {mark} {track['title'][:55]}", end="\r")
         time.sleep(delay)
+
     print()
     found = sum(1 for t in tracks if t.get("youtube_url"))
-    print(f"  YouTube links found: {found}/{total}")
+    print(f"  matched {found}/{total}")
     return tracks
 
 
-# ──────────────────────────────────────────────
-# OUTPUT
-# ──────────────────────────────────────────────
+# --- output ---
 
-def format_name(track: dict, fmt: str) -> str:
-    return fmt.format(
+def fmt_name(track, template):
+    return template.format(
         title=track["title"],
         artist=track["artist"],
-        id=track["track_id"],
+        id=track["track_id"]
     )
 
 
-def save_outputs(tracks: list, cfg: dict, playlist_id: str):
+def save(tracks, cfg, playlist_id):
     out_dir = cfg["output_dir"]
     os.makedirs(out_dir, exist_ok=True)
+
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name_fmt = cfg.get("name_format", "{title} - {artist}")
+    template = cfg.get("name_format", "{title} - {artist}")
     formats = cfg.get("output_formats", ["txt", "csv", "json"])
+    has_yt = any(t.get("youtube_url") for t in tracks)
     saved = []
 
     if "txt" in formats:
-        # Song names list
-        path = os.path.join(out_dir, f"names_{stamp}.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(f"# Playlist: {playlist_id}\n")
-            f.write(f"# Exported: {datetime.now().isoformat()}\n")
-            f.write(f"# Total: {len(tracks)}\n\n")
+        p = os.path.join(out_dir, f"names_{stamp}.txt")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(f"# playlist: {playlist_id}\n")
+            f.write(f"# exported: {datetime.now().isoformat()}\n")
+            f.write(f"# total: {len(tracks)}\n\n")
             for t in tracks:
-                f.write(format_name(t, name_fmt) + "\n")
-        saved.append(path)
+                f.write(fmt_name(t, template) + "\n")
+        saved.append(p)
 
-        # Spotify links list
-        path = os.path.join(out_dir, f"spotify_links_{stamp}.txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(f"# Playlist: {playlist_id}\n")
-            f.write(f"# Exported: {datetime.now().isoformat()}\n\n")
+        p = os.path.join(out_dir, f"spotify_links_{stamp}.txt")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(f"# playlist: {playlist_id}\n")
+            f.write(f"# exported: {datetime.now().isoformat()}\n\n")
             for t in tracks:
                 f.write(t["spotify_url"] + "\n")
-        saved.append(path)
+        saved.append(p)
 
-        # YouTube links list (if available)
-        if any(t.get("youtube_url") for t in tracks):
-            path = os.path.join(out_dir, f"youtube_links_{stamp}.txt")
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(f"# Playlist: {playlist_id}\n")
-                f.write(f"# ⚠ YouTube links are best-effort — accuracy not guaranteed\n")
-                f.write(f"# Exported: {datetime.now().isoformat()}\n\n")
+        if has_yt:
+            p = os.path.join(out_dir, f"youtube_links_{stamp}.txt")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(f"# playlist: {playlist_id}\n")
+                f.write(f"# note: youtube links are best-effort, not guaranteed accurate\n")
+                f.write(f"# exported: {datetime.now().isoformat()}\n\n")
                 for t in tracks:
-                    line = f"{format_name(t, name_fmt)} → {t.get('youtube_url', 'NOT FOUND')}"
-                    f.write(line + "\n")
-            saved.append(path)
+                    yt = t.get("youtube_url") or "not found"
+                    f.write(f"{fmt_name(t, template)} -> {yt}\n")
+            saved.append(p)
 
     if "csv" in formats:
-        path = os.path.join(out_dir, f"playlist_{stamp}.csv")
-        with open(path, "w", encoding="utf-8") as f:
-            has_yt = any(t.get("youtube_url") for t in tracks)
+        p = os.path.join(out_dir, f"playlist_{stamp}.csv")
+        with open(p, "w", encoding="utf-8") as f:
             header = "title,artist,spotify_url"
             if has_yt:
                 header += ",youtube_url"
             f.write(header + "\n")
             for t in tracks:
-                def esc(v): return '"' + str(v).replace('"', '""') + '"'
-                row = f"{esc(t['title'])},{esc(t['artist'])},{esc(t['spotify_url'])}"
+                def q(v):
+                    return '"' + str(v).replace('"', '""') + '"'
+                row = f"{q(t['title'])},{q(t['artist'])},{q(t['spotify_url'])}"
                 if has_yt:
-                    row += f",{esc(t.get('youtube_url', ''))}"
+                    row += f",{q(t.get('youtube_url', ''))}"
                 f.write(row + "\n")
-        saved.append(path)
+        saved.append(p)
 
     if "json" in formats:
-        path = os.path.join(out_dir, f"playlist_{stamp}.json")
-        with open(path, "w", encoding="utf-8") as f:
+        p = os.path.join(out_dir, f"playlist_{stamp}.json")
+        with open(p, "w", encoding="utf-8") as f:
             json.dump({
                 "playlist_id": playlist_id,
                 "exported_at": datetime.now().isoformat(),
                 "total": len(tracks),
                 "tracks": tracks,
             }, f, indent=2, ensure_ascii=False)
-        saved.append(path)
+        saved.append(p)
 
     return saved
 
 
-# ──────────────────────────────────────────────
-# MAIN
-# ──────────────────────────────────────────────
+# --- main ---
 
 def main():
-    parser = argparse.ArgumentParser(description="Spotify Playlist Extractor")
-    parser.add_argument("--playlist", help="Playlist ID or full Spotify URL")
-    parser.add_argument("--no-youtube", action="store_true", help="Skip YouTube link resolution")
-    parser.add_argument("--format", choices=["txt", "csv", "json", "all"], default=None, help="Output format(s)")
-    parser.add_argument("--init", action="store_true", help="Create a default config.json and exit")
+    parser = argparse.ArgumentParser(description="spotify playlist extractor")
+    parser.add_argument("--playlist", help="playlist id or spotify url")
+    parser.add_argument("--no-youtube", action="store_true", help="skip youtube lookup")
+    parser.add_argument("--format", choices=["txt", "csv", "json", "all"])
+    parser.add_argument("--init", action="store_true", help="create a default config.json")
     args = parser.parse_args()
 
-    print("\n🎵  Spotify Playlist Extractor\n" + "─" * 40)
+    print("\nspotify playlist extractor")
+    print("-" * 30)
 
     if args.init:
         save_default_config()
@@ -283,7 +275,6 @@ def main():
 
     cfg = load_config()
 
-    # Override config with CLI args
     if args.playlist:
         cfg["playlist_id"] = extract_playlist_id(args.playlist)
     if args.no_youtube:
@@ -291,47 +282,42 @@ def main():
     if args.format:
         cfg["output_formats"] = ["txt", "csv", "json"] if args.format == "all" else [args.format]
 
-    # Validate
     missing = [k for k in ("client_id", "client_secret", "playlist_id") if not cfg.get(k)]
     if missing:
-        print(f"  ✗ Missing config: {', '.join(missing)}")
-        print(f"  Run: python extractor.py --init  to create config.json")
+        print(f"missing config: {', '.join(missing)}")
+        print("run: python extractor.py --init")
         sys.exit(1)
 
     playlist_id = extract_playlist_id(cfg["playlist_id"])
 
-    # 1. Auth
-    print("\n[1/3] Authenticating with Spotify...")
+    print("\n[1/3] getting spotify token...")
     try:
-        token = get_spotify_token(cfg["client_id"], cfg["client_secret"])
-        print("  ✓ Token obtained")
+        token = get_token(cfg["client_id"], cfg["client_secret"])
+        print("  ok")
     except Exception as e:
-        print(f"  ✗ Auth failed: {e}")
+        print(f"  failed: {e}")
         sys.exit(1)
 
-    # 2. Fetch tracks
-    print(f"\n[2/3] Fetching tracks from playlist {playlist_id}...")
+    print(f"\n[2/3] fetching tracks...")
     try:
-        tracks = fetch_playlist_tracks(token, playlist_id)
-        print(f"  ✓ {len(tracks)} tracks loaded")
+        tracks = fetch_tracks(token, playlist_id)
+        print(f"  loaded {len(tracks)} tracks")
     except Exception as e:
-        print(f"  ✗ Failed to fetch tracks: {e}")
+        print(f"  failed: {e}")
         sys.exit(1)
 
-    # 3. YouTube (optional)
     if cfg.get("youtube_search"):
-        print(f"\n[3/3] Resolving YouTube links ({len(tracks)} searches)...")
-        tracks = resolve_youtube_links(tracks, delay=cfg.get("youtube_delay_seconds", 1.0))
+        print(f"\n[3/3] looking up youtube links ({len(tracks)} searches)...")
+        tracks = resolve_youtube(tracks, delay=cfg.get("youtube_delay_seconds", 1.0))
     else:
-        print("\n[3/3] Skipping YouTube (--no-youtube)")
+        print("\n[3/3] skipping youtube")
 
-    # 4. Save
-    print(f"\n💾  Saving output files...")
-    saved = save_outputs(tracks, cfg, playlist_id)
-    for path in saved:
-        print(f"  ✓ {path}")
+    print("\nsaving files...")
+    saved = save(tracks, cfg, playlist_id)
+    for p in saved:
+        print(f"  {p}")
 
-    print(f"\n✅  Done! {len(tracks)} tracks exported.\n")
+    print(f"\ndone. {len(tracks)} tracks exported\n")
 
 
 if __name__ == "__main__":

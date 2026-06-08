@@ -37,7 +37,7 @@ Edit `config.json`:
 {
   "client_id": "your_client_id_here",
   "client_secret": "your_client_secret_here",
-  "playlist_id": "https://open.spotify.com/playlist/6Jq2DDdkPMMZhE7hlERQP7"
+  "playlist_id": "playlist_link"
 }
 ```
 

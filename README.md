@@ -138,3 +138,5 @@ All files are saved to the `output/` folder (configurable) with a timestamp:
 - YouTube scraping uses no API key — it searches `youtube.com/results` and grabs the first video ID. This works reliably but may break if YouTube changes their page structure.
 - Spotify's API paginates at 100 tracks per request. A 4000-track playlist takes ~40 requests.
 - Be mindful of rate limits if running repeatedly. The script includes small delays between requests.
+
+WIP: Tempo data via [GetSongBPM](https://getsongbpm.com)
